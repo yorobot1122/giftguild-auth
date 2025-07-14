@@ -1,0 +1,2 @@
+pip install flask discord.py requests python-dotenv
+pip freeze > requirements.txt
