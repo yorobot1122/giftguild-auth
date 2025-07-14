@@ -1,1 +1,179 @@
-r
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GiftGuild 인증 시스템</title>
+    <!-- Google reCAPTCHA -->
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <!-- Discord 테마 CSS -->
+    <style>
+        :root {
+            --discord-blurple: #5865F2;
+            --discord-green: #57F287;
+            --discord-dark: #36393f;
+            --discord-darker: #2f3136;
+        }
+        body {
+            background-color: var(--discord-darker);
+            color: white;
+            font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background-color: var(--discord-dark);
+            border-radius: 8px;
+            padding: 30px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            background-color: var(--discord-darker);
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 15px;
+            background-color: #7289da;
+        }
+        .username {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .user-id {
+            color: #b9bbbe;
+            font-size: 0.9em;
+        }
+        .btn {
+            background-color: var(--discord-blurple);
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #4752c4;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: rgba(87, 242, 135, 0.1);
+            border: 1px solid var(--discord-green);
+            color: var(--discord-green);
+        }
+        .error {
+            background-color: rgba(237, 66, 69, 0.1);
+            border: 1px solid #ED4245;
+            color: #ED4245;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 서버 인증</h1>
+        <p>아래 정보가 맞는지 확인 후 인증을 완료해주세요.</p>
+        
+        <div class="user-info">
+            <img id="user-avatar" class="avatar" src="https://cdn.discordapp.com/embed/avatars/0.png">
+            <div>
+                <div id="username" class="username">로드 중...</div>
+                <div id="user-id" class="user-id">ID: 0000000000</div>
+            </div>
+        </div>
+
+        <div class="g-recaptcha" data-sitekey="6LeOUYIrAAAAALqo5bTCrVDKZ4S6E3Z6fkeCEWRh"></div>
+        <button id="auth-btn" class="btn">인증 완료</button>
+        
+        <div id="status-message" class="status"></div>
+    </div>
+
+    <script>
+        // URL에서 사용자 정보 추출
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+
+        // DOM 요소
+        const authBtn = document.getElementById('auth-btn');
+        const statusMsg = document.getElementById('status-message');
+
+        // 페이지 로드 시 사용자 정보 표시
+        if (token) {
+            fetch(`/get_user_info?token=${token}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('username').textContent = data.username;
+                        document.getElementById('user-id').textContent = `ID: ${data.user_id}`;
+                        document.getElementById('user-avatar').src = 
+                            data.avatar ? `https://cdn.discordapp.com/avatars/${data.user_id}/${data.avatar}.png` 
+                                        : 'https://cdn.discordapp.com/embed/avatars/0.png';
+                    } else {
+                        showStatus('⚠️ 유효하지 않은 토큰입니다.', 'error');
+                        authBtn.disabled = true;
+                    }
+                });
+        } else {
+            showStatus('⚠️ 인증 링크가 올바르지 않습니다.', 'error');
+            authBtn.disabled = true;
+        }
+
+        // 인증 버튼 클릭 이벤트
+        authBtn.addEventListener('click', () => {
+            const recaptchaResponse = grecaptcha.getResponse();
+            
+            if (!recaptchaResponse) {
+                showStatus('reCAPTCHA를 완료해주세요.', 'error');
+                return;
+            }
+
+            authBtn.disabled = true;
+            showStatus('인증 처리 중...', 'info');
+
+            fetch('/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, recaptcha: recaptchaResponse })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('✅ 인증 성공! 역할이 부여되었습니다.', 'success');
+                    authBtn.textContent = '인증 완료';
+                    authBtn.style.backgroundColor = '#57F287';
+                } else {
+                    showStatus(`❌ 오류: ${data.message}`, 'error');
+                    authBtn.disabled = false;
+                    grecaptcha.reset();
+                }
+            });
+        });
+
+        function showStatus(message, type) {
+            statusMsg.textContent = message;
+            statusMsg.style.display = 'block';
+            statusMsg.className = 'status ' + (type || '');
+        }
+    </script>
+</body>
+</html>
